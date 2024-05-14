@@ -196,3 +196,5 @@ pyrightconfig.json
 
 ### Customize ###
 /data
+/FAT_results
+*.code-workspace
