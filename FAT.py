@@ -9,6 +9,7 @@ from earlystop import earlystop
 import numpy as np
 from utils import Logger
 import attack_generator as attack
+from multiprocessing import freeze_support
 
 parser = argparse.ArgumentParser(description='PyTorch Friendly Adversarial Training')
 parser.add_argument('--epochs', type=int, default=120, metavar='N', help='number of epochs to train')
@@ -103,101 +104,105 @@ def save_checkpoint(state, checkpoint=out_dir, filename='checkpoint.pth.tar'):
     filepath = os.path.join(checkpoint, filename)
     torch.save(state, filepath)
 
-# setup data loader
-transform_train = transforms.Compose([
-    transforms.RandomCrop(32, padding=4),
-    transforms.RandomHorizontalFlip(),
-    transforms.ToTensor(),
-])
-transform_test = transforms.Compose([
-    transforms.ToTensor(),
-])
+if __name__ == '__main__':
+    # freeze process to perform necessary initialization operations before starting the process
+    freeze_support() # Optional under circumstances described in docs
 
-print('==> Load Test Data')
-if args.dataset == "cifar10":
-    trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_train)
-    train_loader = torch.utils.data.DataLoader(trainset, batch_size=128, shuffle=True, num_workers=2)
-    testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform_test)
-    test_loader = torch.utils.data.DataLoader(testset, batch_size=128, shuffle=False, num_workers=2)
-if args.dataset == "svhn":
-    trainset = torchvision.datasets.SVHN(root='./data', split='train', download=True, transform=transform_train)
-    train_loader = torch.utils.data.DataLoader(trainset, batch_size=128, shuffle=True, num_workers=2)
-    testset = torchvision.datasets.SVHN(root='./data', split='test', download=True, transform=transform_test)
-    test_loader = torch.utils.data.DataLoader(testset, batch_size=128, shuffle=False, num_workers=2)
+    # setup data loader
+    transform_train = transforms.Compose([
+        transforms.RandomCrop(32, padding=4),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+    ])
+    transform_test = transforms.Compose([
+        transforms.ToTensor(),
+    ])
 
-print('==> Load Model')
-if args.net == "smallcnn":
-    model = SmallCNN().cuda()
-    net = "smallcnn"
-if args.net == "resnet18":
-    model = ResNet18().cuda()
-    net = "resnet18"
-if args.net == "WRN":
-  # e.g., WRN-34-10
-    model = Wide_ResNet(depth=args.depth, num_classes=10, widen_factor=args.width_factor, dropRate=args.drop_rate).cuda()
-    net = "WRN{}-{}-dropout{}".format(args.depth, args.width_factor, args.drop_rate)
-if args.net == 'WRN_madry':
-  # e.g., WRN-32-10
-    model = Wide_ResNet_Madry(depth=args.depth, num_classes=10, widen_factor=args.width_factor, dropRate=args.drop_rate).cuda()
-    net = "WRN_madry{}-{}-dropout{}".format(args.depth, args.width_factor, args.drop_rate)
-print(net)
+    print('==> Load Test Data')
+    if args.dataset == "cifar10":
+        trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_train)
+        train_loader = torch.utils.data.DataLoader(trainset, batch_size=128, shuffle=True, num_workers=2)
+        testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform_test)
+        test_loader = torch.utils.data.DataLoader(testset, batch_size=128, shuffle=False, num_workers=2)
+    if args.dataset == "svhn":
+        trainset = torchvision.datasets.SVHN(root='./data', split='train', download=True, transform=transform_train)
+        train_loader = torch.utils.data.DataLoader(trainset, batch_size=128, shuffle=True, num_workers=2)
+        testset = torchvision.datasets.SVHN(root='./data', split='test', download=True, transform=transform_test)
+        test_loader = torch.utils.data.DataLoader(testset, batch_size=128, shuffle=False, num_workers=2)
 
-model = torch.nn.DataParallel(model)
-optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
+    print('==> Load Model')
+    if args.net == "smallcnn":
+        model = SmallCNN().cuda()
+        net = "smallcnn"
+    if args.net == "resnet18":
+        model = ResNet18().cuda()
+        net = "resnet18"
+    if args.net == "WRN":
+    # e.g., WRN-34-10
+        model = Wide_ResNet(depth=args.depth, num_classes=10, widen_factor=args.width_factor, dropRate=args.drop_rate).cuda()
+        net = "WRN{}-{}-dropout{}".format(args.depth, args.width_factor, args.drop_rate)
+    if args.net == 'WRN_madry':
+    # e.g., WRN-32-10
+        model = Wide_ResNet_Madry(depth=args.depth, num_classes=10, widen_factor=args.width_factor, dropRate=args.drop_rate).cuda()
+        net = "WRN_madry{}-{}-dropout{}".format(args.depth, args.width_factor, args.drop_rate)
+    print(net)
 
-start_epoch = 0
-# Resume
-title = 'FAT train'
-if args.resume:
-    # resume directly point to checkpoint.pth.tar e.g., --resume='./out-dir/checkpoint.pth.tar'
-    print('==> Friendly Adversarial Training Resuming from checkpoint ..')
-    print(args.resume)
-    assert os.path.isfile(args.resume)
-    out_dir = os.path.dirname(args.resume)
-    checkpoint = torch.load(args.resume)
-    start_epoch = checkpoint['epoch']
-    model.load_state_dict(checkpoint['state_dict'])
-    optimizer.load_state_dict(checkpoint['optimizer'])
-    logger_test = Logger(os.path.join(out_dir, 'log_results.txt'), title=title, resume=True)
-else:
-    print('==> Friendly Adversarial Training')
-    logger_test = Logger(os.path.join(args.out_dir, 'log_results.txt'), title=title)
-    logger_test.set_names(['Epoch', 'Natural Test Acc', 'FGSM Acc', 'PGD20 Acc', 'CW Acc'])
+    model = torch.nn.DataParallel(model)
+    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
 
-test_nat_acc = 0
-fgsm_acc = 0
-test_pgd20_acc = 0
-cw_acc = 0
-best_epoch = 0
-for epoch in range(start_epoch, args.epochs):
-    adjust_learning_rate(optimizer, epoch + 1)
-    train_time, train_loss, bp_count_avg = train(model, train_loader, optimizer, adjust_tau(epoch + 1, args.dynamictau))
+    start_epoch = 0
+    # Resume
+    title = 'FAT train'
+    if args.resume:
+        # resume directly point to checkpoint.pth.tar e.g., --resume='./out-dir/checkpoint.pth.tar'
+        print('==> Friendly Adversarial Training Resuming from checkpoint ..')
+        print(args.resume)
+        assert os.path.isfile(args.resume)
+        out_dir = os.path.dirname(args.resume)
+        checkpoint = torch.load(args.resume)
+        start_epoch = checkpoint['epoch']
+        model.load_state_dict(checkpoint['state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        logger_test = Logger(os.path.join(out_dir, 'log_results.txt'), title=title, resume=True)
+    else:
+        print('==> Friendly Adversarial Training')
+        logger_test = Logger(os.path.join(args.out_dir, 'log_results.txt'), title=title)
+        logger_test.set_names(['Epoch', 'Natural Test Acc', 'FGSM Acc', 'PGD20 Acc', 'CW Acc'])
 
-    ## Evalutions the same as DAT.
-    loss, test_nat_acc = attack.eval_clean(model, test_loader)
-    loss, fgsm_acc = attack.eval_robust(model, test_loader, perturb_steps=1, epsilon=0.031, step_size=0.031,loss_fn="cent", category="Madry",rand_init=True)
-    loss, test_pgd20_acc = attack.eval_robust(model, test_loader, perturb_steps=20, epsilon=0.031, step_size=0.031 / 4,loss_fn="cent", category="Madry", rand_init=True)
-    loss, cw_acc = attack.eval_robust(model, test_loader, perturb_steps=30, epsilon=0.031, step_size=0.031 / 4,loss_fn="cw", category="Madry", rand_init=True)
+    test_nat_acc = 0
+    fgsm_acc = 0
+    test_pgd20_acc = 0
+    cw_acc = 0
+    best_epoch = 0
+    for epoch in range(start_epoch, args.epochs):
+        adjust_learning_rate(optimizer, epoch + 1)
+        train_time, train_loss, bp_count_avg = train(model, train_loader, optimizer, adjust_tau(epoch + 1, args.dynamictau))
 
-    print(
-        'Epoch: [%d | %d] | Train Time: %.2f s | BP Average: %.2f | Natural Test Acc %.2f | FGSM Test Acc %.2f | PGD20 Test Acc %.2f | CW Test Acc %.2f |\n' % (
-        epoch + 1,
-        args.epochs,
-        train_time,
-        bp_count_avg,
-        test_nat_acc,
-        fgsm_acc,
-        test_pgd20_acc,
-        cw_acc)
-        )
+        ## Evalutions the same as DAT.
+        loss, test_nat_acc = attack.eval_clean(model, test_loader)
+        loss, fgsm_acc = attack.eval_robust(model, test_loader, perturb_steps=1, epsilon=0.031, step_size=0.031,loss_fn="cent", category="Madry",rand_init=True)
+        loss, test_pgd20_acc = attack.eval_robust(model, test_loader, perturb_steps=20, epsilon=0.031, step_size=0.031 / 4,loss_fn="cent", category="Madry", rand_init=True)
+        loss, cw_acc = attack.eval_robust(model, test_loader, perturb_steps=30, epsilon=0.031, step_size=0.031 / 4,loss_fn="cw", category="Madry", rand_init=True)
 
-    logger_test.append([epoch + 1, test_nat_acc, fgsm_acc, test_pgd20_acc, cw_acc])
+        print(
+            'Epoch: [%d | %d] | Train Time: %.2f s | BP Average: %.2f | Natural Test Acc %.2f | FGSM Test Acc %.2f | PGD20 Test Acc %.2f | CW Test Acc %.2f |\n' % (
+            epoch + 1,
+            args.epochs,
+            train_time,
+            bp_count_avg,
+            test_nat_acc,
+            fgsm_acc,
+            test_pgd20_acc,
+            cw_acc)
+            )
 
-    save_checkpoint({
-        'epoch': epoch + 1,
-        'state_dict': model.state_dict(),
-        'bp_avg': bp_count_avg,
-        'test_nat_acc': test_nat_acc,
-        'test_pgd20_acc': test_pgd20_acc,
-        'optimizer': optimizer.state_dict(),
-    })
+        logger_test.append([epoch + 1, test_nat_acc, fgsm_acc, test_pgd20_acc, cw_acc])
+
+        save_checkpoint({
+            'epoch': epoch + 1,
+            'state_dict': model.state_dict(),
+            'bp_avg': bp_count_avg,
+            'test_nat_acc': test_nat_acc,
+            'test_pgd20_acc': test_pgd20_acc,
+            'optimizer': optimizer.state_dict(),
+        })
