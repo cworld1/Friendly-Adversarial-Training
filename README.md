@@ -96,6 +96,12 @@ Conventional adversarial training employs PGD for searching most adversarial dat
    pip install torch -f https://download.pytorch.org/whl/torch_stable.html
    ```
 
+   Then you can run this example script to check if the Pytorch is installed correctly.
+
+   ```bash
+   python ./test/cuda_test.py
+   ```
+
 3. Install the other required packages.
 
    ```bash
